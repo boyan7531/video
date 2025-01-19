@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.5s;
+        }
+        #status {
+            margin: 20px 0;
+        }
+        #downloadLinks {
+            margin-top: 20px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Video Processor</h1>
+    
+    <form id="uploadForm">
+        <div class="form-group">
+            <label>Gameplay Video:</label><br>
+            <input type="file" name="gameplay" accept="video/*" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Attention Video:</label><br>
+            <input type="file" name="attention" accept="video/*" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Split Option:</label><br>
+            <select name="split_type" id="splitType">
+                <option value="none">No splitting</option>
+                <option value="duration">Split by duration</option>
+                <option value="parts">Split by parts</option>
+            </select>
+        </div>
+        
+        <div class="form-group hidden" id="splitValueContainer">
+            <label id="splitValueLabel">Value:</label><br>
+            <input type="number" name="split_value" id="splitValue" min="1">
+        </div>
+        
+        <button type="submit">Process Videos</button>
+    </form>
+    
+    <div id="status" class="hidden">
+        <h3>Processing Status</h3>
+        <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <p id="statusText">Processing...</p>
+    </div>
+    
+    <div id="downloadLinks" class="hidden">
+        <h3>Download Processed Videos</h3>
+        <ul id="downloads"></ul>
+    </div>
+
+    <script>
+        let currentJobId = null;
+        
+        document.getElementById('splitType').addEventListener('change', function() {
+            const container = document.getElementById('splitValueContainer');
+            const label = document.getElementById('splitValueLabel');
+            
+            if (this.value === 'none') {
+                container.classList.add('hidden');
+            } else {
+                container.classList.remove('hidden');
+                label.textContent = this.value === 'duration' ? 'Duration (seconds):' : 'Number of parts:';
+            }
+        });
+        
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            document.getElementById('status').classList.remove('hidden');
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentJobId = data.job_id;
+                    checkStatus();
+                } else {
+                    document.getElementById('statusText').textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                document.getElementById('statusText').textContent = `Error: ${error.message}`;
+            }
+        });
+        
+        async function checkStatus() {
+            if (!currentJobId) return;
+            
+            try {
+                const response = await fetch(`/status/${currentJobId}`);
+                const data = await response.json();
+                
+                document.getElementById('progressBar').style.width = `${data.progress}%`;
+                document.getElementById('statusText').textContent = `Status: ${data.status}`;
+                
+                if (data.status === 'completed') {
+                    showDownloadLinks(data.files);
+                } else if (data.status === 'failed') {
+                    document.getElementById('statusText').textContent = `Error: ${data.error}`;
+                } else {
+                    setTimeout(checkStatus, 5000);
+                }
+            } catch (error) {
+                document.getElementById('statusText').textContent = `Error checking status: ${error.message}`;
+            }
+        }
+        
+        function showDownloadLinks(files) {
+            const container = document.getElementById('downloadLinks');
+            const list = document.getElementById('downloads');
+            container.classList.remove('hidden');
+            
+            list.innerHTML = files.map(file => {
+                const filename = file.split('/').pop();
+                return `<li><a href="/download/${currentJobId}/${filename}" download>${filename}</a></li>`;
+            }).join('');
+        }
+    </script>
+</body>
+</html> 
